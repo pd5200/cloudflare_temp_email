@@ -2,7 +2,6 @@ import { Context } from 'hono';
 import { Jwt } from 'hono/utils/jwt'
 
 import { getBooleanValue, getDomains, getStringValue, getIntValue, getUserRoles, getDefaultDomains, getJsonSetting, getAnotherWorkerList } from './utils';
-import { HonoCustomType, UserRole, AnotherWorker, RPCEmailMessage, ParsedEmailContext } from './types';
 import { unbindTelegramByAddress } from './telegram_api/common';
 import { CONSTANTS } from './constants';
 import { AdminWebhookSettings, WebhookMail, WebhookSettings } from './models';
@@ -151,7 +150,7 @@ export const cleanup = async (
     cleanType: string | undefined | null,
     cleanDays: number | undefined | null
 ): Promise<boolean> => {
-    if (!cleanType || typeof cleanDays !== 'number' || cleanDays < 0 || cleanDays > 30) {
+    if (!cleanType || typeof cleanDays !== 'number' || cleanDays < 0 || cleanDays > 1000) {
         throw new Error("Invalid cleanType or cleanDays")
     }
     console.log(`Cleanup ${cleanType} before ${cleanDays} days`);
@@ -339,26 +338,26 @@ export const getAllowDomains = async (c: Context<HonoCustomType>): Promise<strin
     return user_role?.domains || getDefaultDomains(c);;
 }
 
-export async function sendWebhook(settings: WebhookSettings, formatMap: WebhookMail): Promise<{ success: boolean, message?: string }> {
+export async function sendWebhook(
+    settings: WebhookSettings, formatMap: WebhookMail
+): Promise<{ success: boolean, message?: string }> {
     // send webhook
     let body = settings.body;
     for (const key of Object.keys(formatMap)) {
-        /* eslint-disable no-useless-escape */
         body = body.replace(
             new RegExp(`\\$\\{${key}\\}`, "g"),
             JSON.stringify(
                 formatMap[key as keyof WebhookMail]
-            ).replace(/^"(.*)"$/, '\$1')
+            ).replace(/^"(.*)"$/, '$1')
         );
-        /* eslint-enable no-useless-escape */
     }
-    console.log("send webhook", settings.url, settings.method, settings.headers, body);
     const response = await fetch(settings.url, {
         method: settings.method,
         headers: JSON.parse(settings.headers),
         body: body
     });
     if (!response.ok) {
+        console.log("send webhook error", settings.url, settings.method, settings.headers, body);
         console.log("send webhook error", response.status, response.statusText);
         return { success: false, message: `send webhook error: ${response.status} ${response.statusText}` };
     }

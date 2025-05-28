@@ -67,7 +67,7 @@ export const useGlobalState = createGlobalState(
         const useIframeShowMail = useStorage('useIframeShowMail', false);
         const preferShowTextMail = useStorage('preferShowTextMail', false);
         const userJwt = useStorage('userJwt', '');
-        const userTab = useSessionStorage('userTab', 'user_settings');
+        const userTab = useSessionStorage('userTab', 'address_management');
         const indexTab = useSessionStorage('indexTab', 'mailbox');
         const globalTabplacement = useStorage('globalTabplacement', 'top');
         const useSideMargin = useStorage('useSideMargin', true);
@@ -92,6 +92,8 @@ export const useGlobalState = createGlobalState(
             is_admin: false,
             /** @type {string | null} */
             access_token: null,
+            /** @type {string | null} */
+            new_user_token: null,
             /** @type {null | {domains: string[] | undefined | null, role: string, prefix: string | undefined | null}} */
             user_role: null,
         });
