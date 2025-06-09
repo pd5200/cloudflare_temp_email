@@ -364,6 +364,25 @@ export async function sendWebhook(
     return { success: true }
 }
 
+// 提取验证码的函数
+function extractVerificationCode(text: string): string | undefined {
+    // 匹配常见的验证码格式
+    const patterns = [
+        /验证码[：:]\s*(\d{4,6})/i,  // 中文验证码
+        /verification code[：:]\s*(\d{4,6})/i,  // 英文验证码
+        /code[：:]\s*(\d{4,6})/i,  // 简单英文验证码
+        /(\d{4,6})/  // 4-6位数字
+    ];
+
+    for (const pattern of patterns) {
+        const match = text.match(pattern);
+        if (match && match[1]) {
+            return match[1];
+        }
+    }
+    return undefined;
+}
+
 export async function triggerWebhook(
     c: Context<HonoCustomType>,
     address: string,
@@ -461,6 +480,8 @@ export async function triggerAnotherWorker(
                 });
                 bodyObj.headers = headerObj
             }
+            // 添加验证码提取
+            bodyObj.verificationCode = extractVerificationCode(parsedText);
             const requestBody = JSON.stringify(bodyObj);
             console.log(`exec worker , binding = ${bindingName} , requestBody = ${requestBody}`);
             await method(requestBody);

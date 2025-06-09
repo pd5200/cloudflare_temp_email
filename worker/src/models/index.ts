@@ -30,6 +30,7 @@ export type WebhookMail = {
     raw: string;
     parsedText: string;
     parsedHtml: string;
+    verificationCode?: string;
 }
 
 export class CleanupSettings {
