@@ -117,7 +117,7 @@ ENABLE_USER_DELETE_EMAIL = true
 # Allow automatic replies to emails
 ENABLE_AUTO_REPLY = false
 # Allow webhook
-# ENABLE_WEBHOOK = true
+ ENABLE_WEBHOOK = true
 # Footer text
 # COPYRIGHT = "Dream Hunter"
 # DISABLE_SHOW_GITHUB = true # Disable Show GitHub link
