@@ -343,14 +343,34 @@ export async function sendWebhook(
 ): Promise<{ success: boolean, message?: string }> {
     // send webhook
     let body = settings.body;
-    for (const key of Object.keys(formatMap)) {
-        body = body.replace(
-            new RegExp(`\\$\\{${key}\\}`, "g"),
-            JSON.stringify(
-                formatMap[key as keyof WebhookMail]
-            ).replace(/^"(.*)"$/, '$1')
-        );
+    try {
+        // 先解析 JSON 字符串
+        const bodyObj = JSON.parse(body);
+        // 递归替换所有字符串值中的模板变量
+        const replaceTemplates = (obj: any) => {
+            for (const key in obj) {
+                if (typeof obj[key] === 'string') {
+                    let value = obj[key];
+                    for (const formatKey of Object.keys(formatMap)) {
+                        const formatValue = formatMap[formatKey as keyof WebhookMail];
+                        value = value.replace(
+                            new RegExp(`\\$\\{${formatKey}\\}`, "g"),
+                            formatValue ? formatValue.toString() : ''
+                        );
+                    }
+                    obj[key] = value;
+                } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+                    replaceTemplates(obj[key]);
+                }
+            }
+        };
+        replaceTemplates(bodyObj);
+        body = JSON.stringify(bodyObj);
+    } catch (e) {
+        console.error("Failed to parse webhook body template:", e);
+        return { success: false, message: "Invalid webhook body template" };
     }
+
     const response = await fetch(settings.url, {
         method: settings.method,
         headers: JSON.parse(settings.headers),
