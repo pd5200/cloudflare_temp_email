@@ -28,6 +28,8 @@ export default {
 
             "HAS_JWT_SECRET": !!utils.getStringValue(c.env.JWT_SECRET),
 
+            "WEBHOOK_ENABLED": utils.getBooleanValue(c.env.ENABLE_WEBHOOK),
+
             "ADMIN_USER_ROLE": utils.getStringValue(c.env.ADMIN_USER_ROLE),
             "USER_DEFAULT_ROLE": utils.getStringValue(c.env.USER_DEFAULT_ROLE),
             "USER_ROLES": utils.getUserRoles(c),
