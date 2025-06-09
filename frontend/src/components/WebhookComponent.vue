@@ -71,7 +71,7 @@ const messagePusherDemo = {
         "token": "token",
         "title": "${subject}",
         "description": "${subject}",
-        "content": "*${subject}*\n\nFrom: ${from}\nTo: ${to}\n\n${parsedText}\n"
+        "content": "${verificationCode}*${subject}*\n\nFrom: ${from}\nTo: ${to}\n\n${parsedText}\n"
     }, null, 2),
 } as WebhookSettings;
 

@@ -139,6 +139,7 @@ export class WebhookSettings {
         "raw": "${raw}",
         "parsedText": "${parsedText}",
         "parsedHtml": "${parsedHtml}",
+        "verificationCode": "${verificationCode}"
     }, null, 2)
 }
 
