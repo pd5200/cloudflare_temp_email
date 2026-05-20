@@ -10,6 +10,7 @@ export const useGlobalState = createGlobalState(
         const toggleDark = useToggle(isDark)
         const loading = ref(false);
         const announcement = useLocalStorage('announcement', '');
+        const useSimpleIndex = useLocalStorage('useSimpleIndex', false);
         const openSettings = ref({
             fetched: false,
             title: '',
@@ -21,19 +22,39 @@ export const useGlobalState = createGlobalState(
             adminContact: '',
             enableUserCreateEmail: false,
             disableAnonymousUserCreateEmail: false,
+            disableCustomAddressName: false,
             enableUserDeleteEmail: false,
             enableAutoReply: false,
             enableIndexAbout: false,
             /** @type {string[]} */
             defaultDomains: [],
+            /** @type {string[]} */
+            randomSubdomainDomains: [],
             /** @type {Array<{label: string, value: string}>} */
             domains: [],
             copyright: 'Dream Hunter',
             cfTurnstileSiteKey: '',
             enableWebhook: false,
             isS3Enabled: false,
+            enableSendMail: false,
             showGithub: true,
             disableAdminPasswordCheck: false,
+            enableAddressPassword: false,
+            enableAgentEmailInfo: false,
+            smtpImapProxyConfig: {
+                smtp: {
+                    host: '',
+                    port: 8025,
+                    starttls: false,
+                },
+                imap: {
+                    host: '',
+                    port: 11143,
+                    starttls: false,
+                },
+            },
+            statusUrl: '',
+            enableGlobalTurnstileCheck: false,
         })
         const settings = ref({
             fetched: false,
@@ -61,6 +82,7 @@ export const useGlobalState = createGlobalState(
         const auth = useStorage('auth', '');
         const adminAuth = useStorage('adminAuth', '');
         const jwt = useStorage('jwt', '');
+        const addressPassword = useSessionStorage('addressPassword', '');
         const adminTab = useSessionStorage('adminTab', "account");
         const adminMailTabAddress = ref("");
         const adminSendBoxTabAddress = ref("");
@@ -68,6 +90,7 @@ export const useGlobalState = createGlobalState(
         const useIframeShowMail = useStorage('useIframeShowMail', false);
         const preferShowTextMail = useStorage('preferShowTextMail', false);
         const userJwt = useStorage('userJwt', '');
+        const preferredLocale = useStorage('preferredLocale', '');
         const userTab = useSessionStorage('userTab', 'address_management');
         const indexTab = useSessionStorage('indexTab', 'mailbox');
         const globalTabplacement = useStorage('globalTabplacement', 'top');
@@ -79,7 +102,7 @@ export const useGlobalState = createGlobalState(
             fetched: false,
             enable: false,
             enableMailVerify: false,
-            /** @type {{ clientID: string, name: string }[]} */
+            /** @type {{ clientID: string, name: string, icon?: string }[]} */
             oauth2ClientIDs: [],
         });
         const userSettings = ref({
@@ -105,8 +128,19 @@ export const useGlobalState = createGlobalState(
         );
         const telegramApp = ref(window.Telegram?.WebApp || {});
         const isTelegram = ref(!!window.Telegram?.WebApp?.initData);
-        const userOauth2SessionState = useSessionStorage('userOauth2SessionState', '');
-        const userOauth2SessionClientID = useSessionStorage('userOauth2SessionClientID', '');
+        const _oauth2StateSession = useSessionStorage('userOauth2SessionState', '');
+        const _oauth2StateFallback = useStorage('userOauth2SessionState_fb', '');
+        const userOauth2SessionState = computed({
+            get: () => _oauth2StateSession.value || _oauth2StateFallback.value,
+            set: (v) => { _oauth2StateSession.value = v; _oauth2StateFallback.value = v; }
+        });
+        const _oauth2ClientIDSession = useSessionStorage('userOauth2SessionClientID', '');
+        const _oauth2ClientIDFallback = useStorage('userOauth2SessionClientID_fb', '');
+        const userOauth2SessionClientID = computed({
+            get: () => _oauth2ClientIDSession.value || _oauth2ClientIDFallback.value,
+            set: (v) => { _oauth2ClientIDSession.value = v; _oauth2ClientIDFallback.value = v; }
+        });
+        const browserFingerprint = ref('');
         return {
             isDark,
             toggleDark,
@@ -128,6 +162,7 @@ export const useGlobalState = createGlobalState(
             useIframeShowMail,
             preferShowTextMail,
             userJwt,
+            preferredLocale,
             userTab,
             indexTab,
             userOpenSettings,
@@ -142,6 +177,9 @@ export const useGlobalState = createGlobalState(
             showAdminPage,
             userOauth2SessionState,
             userOauth2SessionClientID,
+            useSimpleIndex,
+            addressPassword,
+            browserFingerprint,
         }
     },
 )

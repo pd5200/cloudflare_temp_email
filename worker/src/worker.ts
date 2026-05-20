@@ -4,6 +4,7 @@ import { jwt } from 'hono/jwt'
 import { Jwt } from 'hono/utils/jwt'
 
 import { api as commonApi } from './commom_api';
+import { api as openAuthApi } from './open_api/auth';
 import { api as mailsApi } from './mails_api'
 import { api as userApi } from './user_api';
 import { api as adminApi } from './admin_api';
@@ -13,7 +14,8 @@ import { api as telegramApi } from './telegram_api'
 import i18n from './i18n';
 import { email } from './email';
 import { scheduled } from './scheduled';
-import { getAdminPasswords, getPasswords, getBooleanValue, getStringArray } from './utils';
+import { getPasswords, getBooleanValue, getDomains, checkIsAdmin } from './utils';
+import { checkAccessControl } from './ip_blacklist';
 
 const API_PATHS = [
 	"/api/",
@@ -48,6 +50,17 @@ app.use('/*', async (c, next) => {
 	const lang = c.req.raw.headers.get("x-lang");
 	if (lang) { c.set("lang", lang); }
 	const msgs = i18n.getMessages(lang || c.env.DEFAULT_LANG);
+
+	// check header x-custom-auth
+	const passwords = getPasswords(c);
+	if (!c.req.path.startsWith("/open_api") && !c.req.path.startsWith("/telegram/") && passwords && passwords.length > 0) {
+		const auth = c.req.raw.headers.get("x-custom-auth");
+		if (!auth || !passwords.includes(auth)) {
+			return c.text(msgs.CustomAuthPasswordMsg, 401)
+		}
+	}
+
+	// rate limit for specific endpoints
 	if (
 		c.req.path.startsWith("/api/new_address")
 		|| c.req.path.startsWith("/api/send_mail")
@@ -63,6 +76,11 @@ app.use('/*', async (c, next) => {
 			if (!success) {
 				return c.text(`IP=${reqIp} Rate limit exceeded for ${c.req.path}`, 429)
 			}
+		}
+		// Check access control (blacklist and daily limit)
+		const accessControlResponse = await checkAccessControl(c);
+		if (accessControlResponse) {
+			return accessControlResponse;
 		}
 	}
 	// webhook check
@@ -128,16 +146,6 @@ const checkoutUserRolePayload = async (
 
 // api auth
 app.use('/api/*', async (c, next) => {
-	// check header x-custom-auth
-	const passwords = getPasswords(c);
-	if (passwords && passwords.length > 0) {
-		const auth = c.req.raw.headers.get("x-custom-auth");
-		if (!auth || !passwords.includes(auth)) {
-			const lang = c.req.raw.headers.get("x-lang") || c.env.DEFAULT_LANG;
-			const messages = i18n.getMessages(lang);
-			return c.text(messages.CustomAuthPasswordMsg, 401)
-		}
-	}
 	if (c.req.path.startsWith("/api/new_address")) {
 		await checkUserPayload(c);
 		await next();
@@ -147,6 +155,10 @@ app.use('/api/*', async (c, next) => {
 		|| c.req.path.startsWith("/api/send_mail")
 	) {
 		await checkoutUserRolePayload(c);
+	}
+	if (c.req.path.startsWith("/api/address_login")) {
+		await next();
+		return;
 	}
 
 	try {
@@ -190,6 +202,9 @@ app.use('/user_api/*', async (c, next) => {
 		console.error(e);
 		return c.text(msgs.UserTokenExpiredMsg, 401)
 	}
+	if (c.req.path.startsWith("/user_api/bind_address")) {
+		await checkoutUserRolePayload(c);
+	}
 	if (c.req.path.startsWith('/user_api/bind_address')
 		&& c.req.method === 'POST'
 	) {
@@ -201,13 +216,9 @@ app.use('/user_api/*', async (c, next) => {
 app.use('/admin/*', async (c, next) => {
 
 	// check header x-admin-auth
-	const adminPasswords = getAdminPasswords(c);
-	if (adminPasswords && adminPasswords.length > 0) {
-		const adminAuth = c.req.raw.headers.get("x-admin-auth");
-		if (adminAuth && adminPasswords.includes(adminAuth)) {
-			await next();
-			return;
-		}
+	if (checkIsAdmin(c)) {
+		await next();
+		return;
 	}
 	const lang = c.req.raw.headers.get("x-lang") || c.env.DEFAULT_LANG;
 	const msgs = i18n.getMessages(lang);
@@ -243,6 +254,7 @@ app.use('/admin/*', async (c, next) => {
 
 
 app.route('/', commonApi)
+app.route('/', openAuthApi)
 app.route('/', mailsApi)
 app.route('/', userApi)
 app.route('/', adminApi)
@@ -258,7 +270,7 @@ const health_check = async (c: Context<HonoCustomType>) => {
 	if (!c.env.JWT_SECRET) {
 		return c.text(msgs.JWTSecretNotSetMsg, 400);
 	}
-	if (getStringArray(c.env.DOMAINS).length === 0) {
+	if (getDomains(c).length === 0) {
 		return c.text(msgs.DomainsNotSetMsg, 400);
 	}
 	return c.text("OK");

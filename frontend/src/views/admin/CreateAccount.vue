@@ -1,41 +1,39 @@
 <script setup>
-import { onMounted, ref } from 'vue';
-import { useI18n } from 'vue-i18n'
+import { computed, onMounted, ref, watch } from 'vue';
+import { useScopedI18n } from '@/i18n/app'
 
 import { useGlobalState } from '../../store'
 import { api } from '../../api'
+import AddressCredentialModal from '../../components/AddressCredentialModal.vue'
 
 const {
     loading, openSettings,
 } = useGlobalState()
 const message = useMessage()
 
-const { t } = useI18n({
-    messages: {
-        en: {
-            address: 'Address',
-            enablePrefix: 'If enable Prefix',
-            creatNewEmail: 'Get New Email',
-            fillInAllFields: 'Please fill in all fields',
-            successTip: 'Success Created',
-            addressCredential: 'Mail Address Credential',
-        },
-        zh: {
-            address: '地址',
-            enablePrefix: '是否启用前缀',
-            creatNewEmail: '创建新邮箱',
-            fillInAllFields: '请填写完整信息',
-            successTip: '创建成功',
-            addressCredential: '邮箱地址凭证',
-        }
-    }
-});
+const { t } = useScopedI18n('views.admin.CreateAccount')
 
 const enablePrefix = ref(true)
+const enableRandomSubdomain = ref(false)
 const emailName = ref("")
 const emailDomain = ref("")
 const showReultModal = ref(false)
 const result = ref("")
+const addressPassword = ref("")
+const createdAddress = ref("")
+
+const canUseRandomSubdomain = computed(() => {
+    if (!emailDomain.value) {
+        return false
+    }
+    return (openSettings.value.randomSubdomainDomains || []).includes(emailDomain.value)
+})
+
+watch(canUseRandomSubdomain, (enabled) => {
+    if (!enabled) {
+        enableRandomSubdomain.value = false
+    }
+})
 
 const newEmail = async () => {
     if (!emailName.value || !emailDomain.value) {
@@ -47,11 +45,14 @@ const newEmail = async () => {
             method: 'POST',
             body: JSON.stringify({
                 enablePrefix: enablePrefix.value,
+                enableRandomSubdomain: enableRandomSubdomain.value,
                 name: emailName.value,
                 domain: emailDomain.value,
             })
         })
         result.value = res["jwt"];
+        addressPassword.value = res["password"] || '';
+        createdAddress.value = res["address"] || '';
         message.success(t('successTip'))
         showReultModal.value = true
     } catch (error) {
@@ -69,15 +70,11 @@ onMounted(async () => {
 
 <template>
     <div class="center">
-        <n-modal v-model:show="showReultModal" preset="dialog" :title="t('addressCredential')">
-            <p>{{ t('addressCredential') }}</p>
-            <n-card :bordered="false" embedded>
-                <b>{{ result }}</b>
-            </n-card>
-        </n-modal>
+        <AddressCredentialModal v-model:show="showReultModal" :address="createdAddress" :jwt="result"
+            :address-password="addressPassword" />
         <n-card :bordered="false" embedded style="max-width: 600px;">
             <n-form-item-row v-if="openSettings.prefix" :label="t('enablePrefix')">
-                <n-checkbox v-model:checked="enablePrefix" />
+                <n-switch v-model:value="enablePrefix" :round="false" />
             </n-form-item-row>
             <n-form-item-row :label="t('address')">
                 <n-input-group>
@@ -89,6 +86,14 @@ onMounted(async () => {
                     <n-select v-model:value="emailDomain" :consistent-menu-width="false"
                         :options="openSettings.domains" />
                 </n-input-group>
+            </n-form-item-row>
+            <n-form-item-row v-if="canUseRandomSubdomain">
+                <n-checkbox v-model:checked="enableRandomSubdomain">
+                    {{ t('enableRandomSubdomain') }}
+                </n-checkbox>
+                <p style="margin: 8px 0 0; opacity: 0.75;">
+                    {{ t('randomSubdomainTip') }}
+                </p>
             </n-form-item-row>
             <n-button @click="newEmail" type="primary" block :loading="loading">
                 {{ t('creatNewEmail') }}

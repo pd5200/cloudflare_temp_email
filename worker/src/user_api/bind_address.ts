@@ -1,11 +1,10 @@
 import { Context } from 'hono';
 import { Jwt } from 'hono/utils/jwt'
 
-import { UserSettings } from "../models";
-import { getJsonSetting } from "../utils"
-import { CONSTANTS } from "../constants";
+import { isAddressCountLimitReached } from "../utils"
 import { unbindTelegramByAddress } from '../telegram_api/common';
 import i18n from '../i18n';
+import { updateAddressUpdatedAt, commonGetUserRole, hideObjectFields } from '../common';
 
 const UserBindAddressModule = {
     bind: async (c: Context<HonoCustomType>) => {
@@ -17,22 +16,23 @@ const UserBindAddressModule = {
         c: Context<HonoCustomType>,
         user_id: number | string, address_id: number | string
     ) => {
+        const msgs = i18n.getMessagesbyContext(c);
         if (!address_id || !user_id) {
-            return c.text("No address or user token", 400)
+            return c.text(msgs.NoAddressOrUserTokenMsg, 400)
         }
         // check if address exists
         const db_address_id = await c.env.DB.prepare(
             `SELECT id FROM address where id = ?`
         ).bind(address_id).first("id");
         if (!db_address_id) {
-            return c.text("Address not found", 400)
+            return c.text(msgs.AddressNotFoundMsg, 400)
         }
         // check if user exists
         const db_user_id = await c.env.DB.prepare(
             `SELECT id FROM users where id = ?`
         ).bind(user_id).first("id");
         if (!db_user_id) {
-            return c.text("User not found", 400)
+            return c.text(msgs.UserNotFoundMsg, 400)
         }
         // check if binded
         const db_user_address_id = await c.env.DB.prepare(
@@ -40,15 +40,9 @@ const UserBindAddressModule = {
         ).bind(user_id, address_id).first("user_id");
         if (db_user_address_id) return c.json({ success: true })
         // check if binded address count
-        const value = await getJsonSetting(c, CONSTANTS.USER_SETTINGS_KEY);
-        const settings = new UserSettings(value);
-        if (settings.maxAddressCount > 0) {
-            const { count } = await c.env.DB.prepare(
-                `SELECT COUNT(*) as count FROM users_address where user_id = ?`
-            ).bind(user_id).first<{ count: number }>() || { count: 0 };
-            if (count >= settings.maxAddressCount) {
-                return c.text("Max address count reached", 400)
-            }
+        const userRole = c.get("userRolePayload");
+        if (await isAddressCountLimitReached(c, user_id, userRole)) {
+            return c.text(msgs.MaxAddressCountReachedMsg, 400)
         }
         // bind
         try {
@@ -56,36 +50,37 @@ const UserBindAddressModule = {
                 `INSERT INTO users_address (user_id, address_id) VALUES (?, ?)`
             ).bind(user_id, address_id).run();
             if (!success) {
-                return c.text("Failed to bind", 500)
+                return c.text(msgs.OperationFailedMsg, 500)
             }
         } catch (e) {
             const error = e as Error;
             if (error.message && error.message.includes("UNIQUE")) {
-                return c.text("Address already binded, please unbind first", 400)
+                return c.text(msgs.AddressAlreadyBindedMsg, 400)
             }
-            return c.text("Failed to bind", 500)
+            return c.text(msgs.OperationFailedMsg, 500)
         }
         return c.json({ success: true })
     },
     unbind: async (c: Context<HonoCustomType>) => {
+        const msgs = i18n.getMessagesbyContext(c);
         const { user_id } = c.get("userPayload");
         const { address_id } = await c.req.json();
         if (!address_id || !user_id) {
-            return c.text("Invalid address or user token", 400)
+            return c.text(msgs.InvalidAddressOrUserTokenMsg, 400)
         }
         // check if address exists
         const db_address_id = await c.env.DB.prepare(
             `SELECT id FROM address where id = ?`
         ).bind(address_id).first("id");
         if (!db_address_id) {
-            return c.text("Address not found", 400)
+            return c.text(msgs.AddressNotFoundMsg, 400)
         }
         // check if user exists
         const db_user_id = await c.env.DB.prepare(
             `SELECT id FROM users where id = ?`
         ).bind(user_id).first("id");
         if (!db_user_id) {
-            return c.text("User not found", 400)
+            return c.text(msgs.UserNotFoundMsg, 400)
         }
         // unbind
         try {
@@ -93,10 +88,10 @@ const UserBindAddressModule = {
                 `DELETE FROM users_address where user_id = ? and address_id = ?`
             ).bind(user_id, address_id).run();
             if (!success) {
-                return c.text("Failed to unbind", 500)
+                return c.text(msgs.OperationFailedMsg, 500)
             }
         } catch (e) {
-            return c.text("Failed to unbind", 500)
+            return c.text(msgs.OperationFailedMsg, 500)
         }
         return c.json({ success: true })
     },
@@ -145,21 +140,22 @@ const UserBindAddressModule = {
             created_at: string;
             updated_at: string;
         }>();
-        return results || [];
+        return (results || []).map((row) => hideObjectFields(row, ['password']));
     },
     getBindedAddressJwt: async (c: Context<HonoCustomType>) => {
+        const msgs = i18n.getMessagesbyContext(c);
         const { address_id } = c.req.param();
         // check binded
         const { user_id } = c.get("userPayload");
         if (!address_id || !user_id) {
-            return c.text("Invalid address or user token", 400)
+            return c.text(msgs.InvalidAddressOrUserTokenMsg, 400)
         }
         // check users_address if address binded
         const db_user_id = await c.env.DB.prepare(
             `SELECT user_id FROM users_address WHERE address_id = ? and user_id = ?`
         ).bind(address_id, user_id).first("user_id");
         if (!db_user_id) {
-            return c.text("Address not binded", 400)
+            return c.text(msgs.AddressNotBindedMsg, 400)
         }
         // generate jwt
         const name = await c.env.DB.prepare(
@@ -174,6 +170,7 @@ const UserBindAddressModule = {
         })
     },
     transferAddress: async (c: Context<HonoCustomType>) => {
+        const msgs = i18n.getMessagesbyContext(c);
         const { user_id } = c.get("userPayload");
         const { address_id, target_user_email } = await c.req.json();
         // check if address exists
@@ -181,38 +178,32 @@ const UserBindAddressModule = {
             `SELECT name FROM address where id = ?`
         ).bind(address_id).first<string>("name");
         if (!address) {
-            return c.text("Address not found", 400)
+            return c.text(msgs.AddressNotFoundMsg, 400)
         }
         // check if user exists
         const db_user_id = await c.env.DB.prepare(
             `SELECT id FROM users where id = ?`
         ).bind(user_id).first("id");
         if (!db_user_id) {
-            return c.text("User not found", 400)
+            return c.text(msgs.UserNotFoundMsg, 400)
         }
         // check if target user exists
         const target_user_id = await c.env.DB.prepare(
             `SELECT id FROM users where user_email = ?`
-        ).bind(target_user_email).first("id");
+        ).bind(target_user_email).first<number>("id");
         if (!target_user_id) {
-            return c.text("Target user not found", 400)
+            return c.text(msgs.TargetUserNotFoundMsg, 400)
         }
         // check target user binded address count
-        const value = await getJsonSetting(c, CONSTANTS.USER_SETTINGS_KEY);
-        const settings = new UserSettings(value);
-        if (settings.maxAddressCount > 0) {
-            const { count } = await c.env.DB.prepare(
-                `SELECT COUNT(*) as count FROM users_address where user_id = ?`
-            ).bind(target_user_id).first<{ count: number }>() || { count: 0 };
-            if (count >= settings.maxAddressCount) {
-                return c.text("Target User Max address count reached", 400)
-            }
+        const userRoleObj = await commonGetUserRole(c, target_user_id);
+        if (await isAddressCountLimitReached(c, target_user_id, userRoleObj?.role)) {
+            return c.text(msgs.MaxAddressCountReachedMsg, 400)
         }
         // check if binded
         const db_user_address_id = await c.env.DB.prepare(
             `SELECT user_id FROM users_address where user_id = ? and address_id = ?`
         ).bind(user_id, address_id).first("user_id");
-        if (!db_user_address_id) return c.text("Address not binded", 400)
+        if (!db_user_address_id) return c.text(msgs.AddressNotBindedMsg, 400)
         // unbind telegram address
         await unbindTelegramByAddress(c, address);
         // unbind user address
@@ -221,10 +212,10 @@ const UserBindAddressModule = {
                 `DELETE FROM users_address where user_id = ? and address_id = ?`
             ).bind(user_id, address_id).run();
             if (!success) {
-                return c.text("Failed to unbind", 500)
+                return c.text(msgs.OperationFailedMsg, 500)
             }
         } catch (e) {
-            return c.text("Failed to unbind user", 500)
+            return c.text(msgs.OperationFailedMsg, 500)
         }
         // delete address
         await c.env.DB.prepare(
@@ -235,14 +226,15 @@ const UserBindAddressModule = {
             `INSERT INTO address(name) VALUES(?)`
         ).bind(address).run();
         if (!newAddressSuccess) {
-            throw new Error("Failed to create address")
+            throw new Error(msgs.FailedCreateAddressMsg)
         }
+        await updateAddressUpdatedAt(c, address);
         // find new address id
         const new_address_id = await c.env.DB.prepare(
             `SELECT id FROM address WHERE name = ?`
         ).bind(address).first<number | null | undefined>("id");
         if (!new_address_id) {
-            throw new Error("Failed to find new address id")
+            throw new Error(msgs.OperationFailedMsg)
         }
         // bind
         try {
@@ -250,14 +242,14 @@ const UserBindAddressModule = {
                 `INSERT INTO users_address (user_id, address_id) VALUES (?, ?)`
             ).bind(target_user_id, new_address_id).run();
             if (!success) {
-                return c.text("Failed to bind", 500)
+                return c.text(msgs.OperationFailedMsg, 500)
             }
         } catch (e) {
             const error = e as Error;
             if (error.message && error.message.includes("UNIQUE")) {
-                return c.text("Address already binded, please unbind first", 400)
+                return c.text(msgs.AddressAlreadyBindedMsg, 400)
             }
-            return c.text("Failed to bind", 500)
+            return c.text(msgs.OperationFailedMsg, 500)
         }
         return c.json({ success: true })
     }
